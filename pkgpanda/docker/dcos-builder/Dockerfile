@@ -24,6 +24,7 @@ RUN apt-get -qq update && apt-get -y install \
   libpcre++-dev \
   libpopt-dev \
   libsasl2-dev \
+  libstdc++6 \
   libsvn-dev \
   libsystemd-dev \
   libtool \
