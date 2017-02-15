@@ -69,10 +69,17 @@ def test_move_external_volume_to_new_agent(dcos_api_session):
     })
     read_app['container']['volumes'][0]['containerPath'] = docker_volume_path
 
+    # We've observed a 4 minute delay in detaching a volume. This causes the 
+    # second task's deploy to timeout after the default 120s.
+    # We set the deploy_and_cleanup timeout to 10 minutes.
+    # See https://jira.mesosphere.com/browse/DCOS-13562
+    timeout=600
+
     deploy_kwargs = {
         'check_health': False,
         # A volume might fail to attach because EC2. We can tolerate that and retry.
         'ignore_failed_tasks': True,
+        'timeout': timeout
     }
 
     try:
@@ -93,6 +100,6 @@ def test_move_external_volume_to_new_agent(dcos_api_session):
                 'disk': 0,
                 'cmd': delete_cmd}}
         try:
-            dcos_api_session.metronome_one_off(delete_job)
+            dcos_api_session.metronome_one_off(delete_job, timeout=timeout)
         except Exception as ex:
             raise Exception('Failed to clean up volume {}: {}'.format(test_label, ex)) from ex
