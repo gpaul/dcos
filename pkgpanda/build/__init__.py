@@ -909,13 +909,35 @@ def _build(package_store, name, variant, clean_after_build, recursive):
     if builder.has('group'):
         group = builder.take('group')
         if not isinstance(group, str):
-            raise BuildError("group in buildinfo.json must be either not set (use default group for this user)"
+            raise BuildError("group in buildinfo.json must either not be set (use default group for this user)"
                              ", or group must be a string")
         try:
             pkgpanda.UserManagement.validate_group_name(group)
         except ValidationError as ex:
             raise BuildError("group in buildinfo.json didn't meet the validation rules. {}".format(ex))
         pkginfo['group'] = group
+
+    supplemental_groups = None
+    if builder.has('supplemental_groups'):
+        supplemental_groups = builder.take('supplemental_groups')
+        type_err = BuildError("supplemental_groups in buildinfo.json must either not be set"
+                              ", or supplemental_groups must be a list of strings")
+        if not isinstance(supplemental_groups, list):
+            raise type_err
+        for g in supplemental_groups:
+            if not isinstance(g, str):
+                raise type_err
+        try:
+            for g in supplemental_groups:
+                pkgpanda.UserManagement.validate_group_name(g)
+        except ValidationError as ex:
+            raise BuildError("supplemental_groups in buildinfo.json didn't meet the validation rules. {}".format(ex))
+        if username in supplemental_groups:
+            raise BuildError("`username` found in `supplemental_groups`, use `group` to specify primary group.")
+        if group in supplemental_groups:
+            raise BuildError("`group` found in `supplemental_groups`. Don't specify it twice.")
+
+        pkginfo['supplemental_groups'] = supplemental_groups
 
     # Packages need directories inside the fake install root (otherwise docker
     # will try making the directories on a readonly filesystem), so build the

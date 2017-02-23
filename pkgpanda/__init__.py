@@ -184,6 +184,10 @@ class Package:
     def group(self):
         return self.__pkginfo.get('group', None)
 
+    @property
+    def supplemental_groups(self):
+        return self.__pkginfo.get('supplemental_groups', None)
+
     def __repr__(self):
         return str(self.__id)
 
@@ -227,6 +231,9 @@ def validate_compatible(packages, roles):
 
         if package.username is None and package.group is not None:
             raise ValidationError("`group` cannot be used without `username`")
+
+        if package.username is None and package.supplemental_groups is not None:
+            raise ValidationError("`supplemental_groups` cannot be used without `username`")
 
         names.add(package.name)
         ids.add(str(package.id))
@@ -491,6 +498,29 @@ class UserManagement:
             raise ValidationError("Group {} does not exist on the system".format(group))
 
     @staticmethod
+    def validate_supplemental_group_names(supplemental_groups):
+        # Empty supplemental_groups is allowed.
+        if not supplemental_groups:
+            return
+
+        for group in supplemental_groups:
+            UserManagement.validate_group_name(group)
+
+    @staticmethod
+    def validate_supplemental_groups(supplemental_groups):
+        UserManagement.validate_supplemental_group_names(supplemental_groups)
+        # Empty supplemental_groups is allowed.
+        if not supplemental_groups:
+            return
+
+        for group in supplemental_groups:
+            UserManagement.validate_group_name(group)
+            try:
+                grp.getgrnam(group)
+            except KeyError:
+                raise ValidationError("Group {} does not exist on the system".format(group))
+
+    @staticmethod
     def validate_group_name(group_name):
         if not group_name:
             return
@@ -500,23 +530,29 @@ class UserManagement:
                 group_name, linux_group_regex))
 
     @staticmethod
-    def validate_user_group(username, group_name):
+    def validate_user_group(username, group_name, supplemental_groups):
         user = pwd.getpwnam(username)
-        if not group_name:
+
+        groups = []
+        if group_name:
+            groups.append(group_name)
+        if supplemental_groups:
+            groups.extend(supplemental_groups)
+        if not groups:
             return
 
-        group = grp.getgrnam(group_name)
-        if user.pw_gid != group.gr_gid:
+        for g in groups:
+            group = grp.getgrnam(g)
+            if user.pw_gid != group.gr_gid:
+                # check if the user is the right group, but the group is not primary.
+                if username in group.gr_mem:
+                    return
 
-            # check if the user is the right group, but the group is not primary.
-            if username in group.gr_mem:
-                return
+                raise ValidationError(
+                    "User {} exists with current UID {}, however he should be assigned to group {} with {} UID, please "
+                    "check `buildinfo.json`".format(username, user.pw_gid, g, group.gr_gid))
 
-            raise ValidationError(
-                "User {} exists with current UID {}, however he should be assigned to group {} with {} UID, please "
-                "check `buildinfo.json`".format(username, user.pw_gid, group_name, group.gr_gid))
-
-    def add_user(self, username, group):
+    def add_user(self, username, group, supplemental_groups):
         UserManagement.validate_username(username)
 
         if not self._manage_users:
@@ -524,7 +560,7 @@ class UserManagement:
 
         # Check if the user already exists and exit.
         try:
-            UserManagement.validate_user_group(username, group)
+            UserManagement.validate_user_group(username, group, supplemental_groups)
             self._users.add(username)
             return
         except KeyError as ex:
@@ -535,6 +571,32 @@ class UserManagement:
         if not self._add_users:
             raise ValidationError("User {} doesn't exist but is required by a DC/OS Component, and "
                                   "automatic user addition is disabled".format(username))
+
+        def _group_exists(group_name):
+            try:
+                grp.getgrnam(group_name)
+                return True
+            except KeyError:
+                return False
+
+        def _add_group(group_name):
+            if _group_exists(group_name):
+                return
+            add_group_cmd = [
+                'groupadd',
+                '--system',
+                group_name,
+            ]
+            try:
+                check_output(add_group_cmd)
+            except CalledProcessError as ex:
+                raise ValidationError("Group {} doesn't exist and couldn't be created because of: {}"
+                                    .format(group_name, ex.output))
+
+        # Create supplemental groups if they don't already exist
+        if supplemental_groups:
+            for g in supplemental_groups:
+                _add_group(g)
 
         # Add the user:
         add_user_cmd = [
@@ -550,6 +612,10 @@ class UserManagement:
             add_user_cmd += [
                 '-g', group
             ]
+
+        if supplemental_groups is not None:
+            UserManagement.validate_supplemental_groups(supplemental_groups)
+            add_user_cmd.extend(['-G', *supplemental_groups])
 
         add_user_cmd += [username]
 
@@ -787,7 +853,7 @@ class Install:
             # to something incompatible. We survive the first upgrade because everything goes from
             # root to specific users, and root can access all user files.
             if package.username is not None:
-                sysusers.add_user(package.username, package.group)
+                sysusers.add_user(package.username, package.group, package.supplemental_groups)
 
             # Ensure the state directory in `/var/lib/dcos` exists
             # TODO(cmaloney): On upgrade take a snapshot?
