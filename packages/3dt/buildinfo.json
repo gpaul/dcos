@@ -8,5 +8,6 @@
   },
   "username": "dcos_3dt",
   "group": "systemd-journal",
+  "supplemental_groups": ["dcos_adminrouter"],
   "state_directory": true
 }

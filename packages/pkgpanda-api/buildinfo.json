@@ -4,5 +4,8 @@
       "python",
       "python-gunicorn",
       "teamcity-messages"
-  ]
+  ],
+  "username": "dcos_pkgpanda",
+  "group": "dcos_pkgpanda",
+  "supplemental_groups": ["dcos_adminrouter"]
 }
