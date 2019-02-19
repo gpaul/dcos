@@ -176,6 +176,8 @@ Format of the entries must be.
 ### Fixed and improved
 
 * Fixed race condition in Telegraf dcos_statsd input plugin. (DCOS_OSS-4096)
+* Fix dcos-net-setup.py failing when systemd network directory did not exist (DCOS-49711)
+* Updated REX-Ray version to 0.11.4 (DCOS_OSS-4316) (COPS-3961) [rexray v0.11.4](https://github.com/rexray/rexray/releases/tag/v0.11.4)
 
 * Check system clock is synced before starting Exhibitor (DCOS_OSS-4287)
 
